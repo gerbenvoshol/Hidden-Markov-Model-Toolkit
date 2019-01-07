@@ -21,5 +21,6 @@ Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
  CITATION
 
  If you use this HMM Toolkit in a publication, please reference:
+ 
  Voshol, G.P. (2019). HMMTK: A simple HMM Toolkit (Version 1.0) [Software]. 
  Available from https://github.com/gerbenvoshol/Hidden-Markov-Model-Toolkit
