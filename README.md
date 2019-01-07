@@ -1,6 +1,5 @@
 # Hidden-Markov-Model-Toolkit
 Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
-	 This is a single header file with a bunch of useful HMM functions
 
  ============================================================================
 	 You MUST
