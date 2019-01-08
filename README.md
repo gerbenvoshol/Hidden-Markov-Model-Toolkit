@@ -2,6 +2,7 @@
 Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
 
  ============================================================================
+	 
 	 You MUST
 
 			#define HMMTK_DEFINE
@@ -13,6 +14,7 @@ Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
 			#include "hmmtk.h"
 
 	 All other files should just #include "hmmtk.h" without the #define.
+	 
  ============================================================================
 
  Version History
