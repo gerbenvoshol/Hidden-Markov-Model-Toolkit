@@ -1,4 +1,4 @@
-/* hmmtk.h - v1.0 - simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) Toolkit -- GNU GPL
+/* hmmtk.h - v1.01 - simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) Toolkit -- GNU GPL
 					no warranty is offered or implied; use this code at your own risk
 
 	 This is a single header file with a bunch of useful HMM functions
@@ -18,12 +18,14 @@
  ============================================================================
 
  Version History
+ 		1.01  Fixed memory leak
 		1.00  Initial release containing basic discrete and continuous hmm functions
 
  CITATION
 
  If you use this HMM Toolkit in a publication, please reference:
- Voshol, G.P. (2019). HMMTK: A simple HMM Toolkit (Version 1.0) [Software]. Available from http://www.
+ Voshol, G.P. (2019). HMMTK: A simple HMM Toolkit (Version 1.0) [Software]. 
+ Available from https://github.com/gerbenvoshol/Hidden-Markov-Model-Toolkit
 
  LICENSE
 
@@ -47,7 +49,7 @@
  UMDHMM package (Tapas Kanungo, see references), but the actual implementation of those
  subroutines is different. For example UMDHMM uses scaling to achieve numerical stability, but
  in this package we choose to use the logarithm according to the paper by Mann (2006). The
- continuous HMM functions are addapted from those of Peisong Wang.
+ continuous HMM functions are adapted from those of Peisong Wang.
 
  REFERENCES
 
@@ -2412,6 +2414,8 @@ void f(CHMM *hmm, struct samples *p_samples, struct local_store_c *c, struct loc
 				acc->denominatorM[i] += gamma_t_i;
 			}
 		}
+
+		free_d3tensor(xi, 1, T, 1, hmm->N, 1, hmm->N);
 	} /* for sample*/
 
 	/* reestimate frequency of state i in time t=1 */
