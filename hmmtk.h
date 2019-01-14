@@ -1110,7 +1110,7 @@ void dhmm_baumwelch(DHMM *hmm, int T, int *O, double **alpha, double **beta, dou
 					numerator = elnsum(numerator, xi[t][i][j]);
 					denominator = elnsum(denominator, gamma[t][i]);
 				}
-				hmm->A[i][j] = eexp(elnproduct(numerator, -denominator));
+				hmm->A[i][j] = elnproduct(numerator, -denominator));
 			}
 
 			for (k = 1; k <= hmm->M; k++) {
@@ -1122,7 +1122,7 @@ void dhmm_baumwelch(DHMM *hmm, int T, int *O, double **alpha, double **beta, dou
 					}
 					denominator = elnsum(denominator, gamma[t][i]);
 				}
-				hmm->B[i][k] = eexp(elnproduct(numerator, -denominator));
+				hmm->B[i][k] = elnproduct(numerator, -denominator);
 			}
 		}
 
@@ -1224,16 +1224,16 @@ void dhmm_baumwelch_multi(DHMM *hmm, int *T, int L, int **O, double **alpha, dou
 	}
 
 	for (i = 1; i <= hmm->N; i++) {
-		hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+		hmm->pi[i] = elnproduct(logpi[i], -pisum);
 	}
 
 	/* reestimate transition matrix  and symbol prob in each state */
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+			hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 		}
 		for (k = 1; k <= hmm->M; k++) {
-			hmm->B[i][k] = eexp(elnproduct(numeratorB[i][k], -denominatorB[i][k]));
+			hmm->B[i][k] = elnproduct(numeratorB[i][k], -denominatorB[i][k]);
 		}
 	}
 
@@ -1307,16 +1307,16 @@ void dhmm_baumwelch_multi(DHMM *hmm, int *T, int L, int **O, double **alpha, dou
 		}
 
 		for (i = 1; i <= hmm->N; i++) {
-			hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+			hmm->pi[i] = elnproduct(logpi[i], -pisum);
 		}
 
 		/* reestimate transition matrix  and symbol prob in each state */
 		for (i = 1; i <= hmm->N; i++) {
 			for (j = 1; j <= hmm->N; j++) {
-				hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+				hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 			}
 			for (k = 1; k <= hmm->M; k++) {
-				hmm->B[i][k] = eexp(elnproduct(numeratorB[i][k], -denominatorB[i][k]));
+				hmm->B[i][k] = elnproduct(numeratorB[i][k], -denominatorB[i][k]);
 			}
 		}
 
@@ -1427,16 +1427,16 @@ void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, do
 	}
 
 	for (i = 1; i <= hmm->N; i++) {
-		hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+		hmm->pi[i] = elnproduct(logpi[i], -pisum);
 	}
 
 	/* reestimate transition matrix  and symbol prob in each state */
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+			hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 		}
 		for (k = 1; k <= hmm->M; k++) {
-			hmm->B[i][k] = eexp(elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]));
+			hmm->B[i][k] = elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]);
 		}
 	}
 
@@ -1510,16 +1510,16 @@ void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, do
 		}
 
 		for (i = 1; i <= hmm->N; i++) {
-			hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+			hmm->pi[i] = elnproduct(logpi[i], -pisum);
 		}
 
 		/* reestimate transition matrix  and symbol prob in each state */
 		for (i = 1; i <= hmm->N; i++) {
 			for (j = 1; j <= hmm->N; j++) {
-				hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+				hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 			}
 			for (k = 1; k <= hmm->M; k++) {
-				hmm->B[i][k] = eexp(elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]));
+				hmm->B[i][k] = elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]);
 			}
 		}
 
@@ -1638,16 +1638,16 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 	}
 
 	for (i = 1; i <= hmm->N; i++) {
-		hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+		hmm->pi[i] = elnproduct(logpi[i], -pisum);
 	}
 
 	/* reestimate transition matrix  and symbol prob in each state */
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+			hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 		}
 		for (k = 1; k <= hmm->M; k++) {
-			hmm->B[i][k] = eexp(elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]));
+			hmm->B[i][k] = elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]);
 		}
 	}
 
@@ -1730,16 +1730,16 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 		}
 
 		for (i = 1; i <= hmm->N; i++) {
-			hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+			hmm->pi[i] = elnproduct(logpi[i], -pisum);
 		}
 
 		/* reestimate transition matrix  and symbol prob in each state */
 		for (i = 1; i <= hmm->N; i++) {
 			for (j = 1; j <= hmm->N; j++) {
-				hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+				hmm->A[i][j] = elnproduct(numeratorA[i][j], -denominatorA[i][j]);
 			}
 			for (k = 1; k <= hmm->M; k++) {
-				hmm->B[i][k] = eexp(elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]));
+				hmm->B[i][k] = elnproduct(numeratorB[tied_obs[i]][k], -denominatorB[tied_obs[i]][k]);
 			}
 		}
 
@@ -2430,14 +2430,14 @@ void f(CHMM *hmm, struct samples *p_samples, struct local_store_c *c, struct loc
 	}
 
 	for (i = 1; i <= hmm->N; i++) {
-		hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+		hmm->pi[i] = elnproduct(logpi[i], -pisum);
 	}
 
 	/* reestimate transition matrix and observation prob in each state */
 	for (i = 1; i <= hmm->N; i++) {
 		/* update A */
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = eexp(elnproduct(acc->numeratorA[i][j], -acc->denominatorA[i][j]));
+			hmm->A[i][j] = elnproduct(acc->numeratorA[i][j], -acc->denominatorA[i][j]);
 		}
 
 		/* update B*/
