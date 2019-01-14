@@ -1138,7 +1138,7 @@ void dhmm_baumwelch(DHMM *hmm, int T, int *O, double **alpha, double **beta, dou
 		iter++;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	*pniter = iter;
 	*plogprobfinal = logprobf; /* log P(O|estimated model) */
@@ -1336,7 +1336,7 @@ void dhmm_baumwelch_multi(DHMM *hmm, int *T, int L, int **O, double **alpha, dou
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -1539,7 +1539,7 @@ void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, do
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -1759,7 +1759,7 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -2484,11 +2484,10 @@ void chmm_baumwelch(CHMM *hmm, struct samples *p_samples, int *piter, double *pl
 
 		delta = logprob - logprobprev;
 		logprobprev = logprob;
-		if (*piter > 1) {
-			printf("iter %d, delta is : %.20f\n", *piter, delta);
-		}
+		
+		printf("iter %d, delta is : %.20f\n", *piter, delta);
 
-		if (delta < DELTA) {
+		if (fabs(delta) < DELTA) {
 			break;
 		}
 	}
