@@ -2006,7 +2006,7 @@ void chmm_save(char *filename, CHMM *hmm)
 	fprintf(fp, "Transition matrix (A):\n");
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
-			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, hmm->A[i][j]);
+			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, eexp(hmm->A[i][j]));
 		}
 		fprintf(fp, "\n");
 	}
@@ -2029,7 +2029,7 @@ void chmm_save(char *filename, CHMM *hmm)
 
 	fprintf(fp, "Initial state probability (pi):\n");
 	for (i = 1; i <= hmm->N; i++) {
-		fprintf(fp, "%.*e ", OP_DBL_Digs - 1, hmm->pi[i]);
+		fprintf(fp, "%.*e ", OP_DBL_Digs - 1, eexp(hmm->pi[i]));
 	}
 	fprintf(fp, "\n\n");
 
