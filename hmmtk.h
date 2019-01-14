@@ -1110,7 +1110,7 @@ void dhmm_baumwelch(DHMM *hmm, int T, int *O, double **alpha, double **beta, dou
 					numerator = elnsum(numerator, xi[t][i][j]);
 					denominator = elnsum(denominator, gamma[t][i]);
 				}
-				hmm->A[i][j] = elnproduct(numerator, -denominator));
+				hmm->A[i][j] = elnproduct(numerator, -denominator);
 			}
 
 			for (k = 1; k <= hmm->M; k++) {
@@ -2153,7 +2153,7 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 		for (j = 1; j <= D; j++) {
 			tmp += eln(cov[i][j]);
 		}
-		prob2[i] = - tmp * 0.5;
+		prob2[i] = - tmp * (D / 2.0);
 	}
 
 	for (f = 0; f < T; f++) {
