@@ -4,68 +4,132 @@
 #define HMMTK_DEFINE
 #include "hmmtk.h"
 
-CHMM* createHMM(int N, int D);
+void Usage(char *name)
+{
+    printf("Usage error. \n");
+    printf("Usage1: %s [-v] -N <num_states> -M <num_symbols> <file.seq>\n", 
+    name);
+    printf("Usage2: %s [-v] -S <seed> -N <num_states> -M <num_symbols> <file.seq>\n", 
+    name);
+    printf("Usage3: %s [-v] -I <mod.hmm> <file.seq>\n", 
+    name);
+    printf("  N - number of states\n");
+    printf("  M - number of symbols\n");
+    printf("  S - seed for random number genrator\n");
+    printf("  I - mod.hmm is a file with the initial model parameters\n");
+    printf("  file.data - file containing the obs. seqence\n");
+    printf("  v - prints out number of iterations and log prob\n");
+}
 
 int main(int argc, char *argv[])
 {
-    // int i,j,k;
     CHMM hmm;
-    // CHMM *phmm = &hmm;
-
-
-
-    // int N = 5;
-    // int D = 1764;
+    int N = 27;
+    int D = 4;
+    int seed = 0;
+    int c;
+    int iflg=0, sflg=0, nflg=0, mflg=0, errflg =0, vflg=0;
+    char    *hmminitfile;
     // int T = 100;
-    // CHMM *phmm_gt = createHMM(N,D);
-    // PrintHMM("test_gt.hmm",phmm_gt);
-    // FILE *ptest = fopen("a.data","w+");
-    // double **data = (double **) dmatrix(1,T,1,D);
-    // fprintf(ptest,"sample_count= 140\n"); 
-    // for(i=1;i<=140;i++)
-    // {
-    //     //fprintf(ptest,"# %d\n",dd); 
-    //     int state_count = 0;
-    //     int last_state_count = 0;
-    //     int current_state = 1;
-    //     while((last_state_count==0)||state_count>N*last_state_count&&state_count<T)
-    //     {
-    //         state_count++;
-    //         if(current_state==N)
-    //             last_state_count++;
 
-    //         for(k=1;k<=D;k++)
-    //         {
-    //             data[state_count][k] = hmm_norm_rand(phmm_gt->B.miu[current_state][k],
-    //                             sqrt(phmm_gt->B.cov[current_state][k]));
-    //         }
-    //         if(hmm_rand()>eexp(phmm_gt->A[current_state][current_state]))
-    //         {
-    //             current_state++;
-    //         }
-    //     }
-    //     fprintf(ptest,"# %d\n", state_count);
-    //     for(j=1;j<=state_count;j++)
-    //     {
-    //         for(k=1;k<=D;k++)
-    //             fprintf(ptest,"%f ", data[j][k]);
-    //         fprintf(ptest,"\n");
-    //     }
+    extern char *optarg;
+    extern int optind, opterr, optopt;
 
-    // }
-    // fclose(ptest);
-
-    if (argc != 3) {
-        printf("Usage: %s <model.hmm> <obs.data>\n", argv[0]);
-        return 1;
+    while ((c= getopt(argc, argv, "vhI:S:N:M:")) != EOF) {
+        switch (c) {
+            case 'v': 
+                vflg++; 
+                break;
+            case 'h': 
+                Usage(argv[0]);
+                exit(1);
+                break;
+            case 'S':
+                /* set random number generator seed */
+                if (sflg)
+                        errflg++;
+                else {
+                        sflg++;
+                        sscanf(optarg, "%d", &seed);
+                }
+                break;
+            case 'N':  
+                /* set random number generator seed */
+                if (nflg) 
+                        errflg++; 
+                else { 
+                        nflg++;  
+                        sscanf(optarg, "%d", &N);
+                } 
+                break;   
+            case 'M':  
+                /* set random number generator seed */
+                if (mflg) 
+                        errflg++; 
+                else { 
+                        mflg++;  
+                        sscanf(optarg, "%d", &D);
+                } 
+                break;   
+            case 'I':  
+                /* set random number generator seed */
+                if (iflg) 
+                    errflg++; 
+                else { 
+                    iflg++;  
+                    hmminitfile = optarg;
+                } 
+                break;   
+            case '?':
+                errflg++;
+        }
     }
+    /* you can initialize the hmm model three ways:
+           i) with a model stored in a file, which also sets 
+          the number of states N and number of symbols M.
+           ii) with a random model by just specifyin N and M
+              on the command line.
+           iii) with a specific random model by specifying N, M
+              and seed on the command line. 
+        */
+
+    if (iflg) {
+        /* model being read from a file */
+        if (((sflg || nflg) || mflg)) {
+            errflg++;
+        }
+    } else if ((!nflg) || (!mflg)) { 
+        /* Model not being intialied from file */ 
+        /* both N and M should be specified */
+        errflg++; 
+    }
+
+    
+    if ((argc - optind) != 1) errflg++; /* number or arguments not okay */
+
+    if (errflg) {
+        Usage(argv[0]);
+        exit (1);
+    }
+
+
+    /* initialize the hmm model */
+    if (iflg) { 
+        chmm_load(hmminitfile, &hmm);
+    } else if (sflg) {
+        chmm_init(&hmm, N, "0ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", D, "0123456789", seed);
+    } else {
+        seed = hmm_seed();
+        chmm_init(&hmm, N, "0ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", D, "0123456789", seed);
+    }
+
 
     struct samples *p_samples;
     int iter;
     double logprobinit, logprobfinal;
 
-    p_samples = chmm_load_samples(argv[2]);
-    chmm_print_samples(p_samples);
+    p_samples = chmm_load_samples(argv[optind]);
+
     // ///////
     // //
     // //
@@ -73,71 +137,13 @@ int main(int argc, char *argv[])
     // //
     // //
     // ///////
-    // InitHMM(phmm, 5, 0, 1764, p_samples, 0);
-    chmm_load(argv[1], &hmm);
+
     chmm_save("stdout", &hmm);
-    chmm_baumwelch(&hmm, p_samples, &iter, &logprobinit, &logprobfinal, 1000000);
+
+    chmm_baumwelch(&hmm, p_samples, &iter, &logprobinit, &logprobfinal, 100);
+
     chmm_save("stdout", &hmm);
-    // printf("Test\n");
+
     return 0;
 }
 
-// HMM* createHMM(int N, int D)
-// {
-//     int i,j,k;
-//         double tmp;
-//     HMM* phmm = (HMM*) malloc(sizeof(HMM));
-//     phmm->N = N;
-//     phmm->D = D;
-//     printf("sssss\n");
-
-//     phmm->pi = (double *) dvector(1, N);
-//     for(i=1;i<=N;i++)
-//             phmm->pi[i] = NAN;
-//     phmm->pi[1] = 0.0;
-
-//     phmm->A = (double **) dmatrix(1,N,1,N);
-//     for(i=1;i<=N;i++)
-//     {
-//         for(j=1;j<=N;j++)
-//             phmm->A[i][j] = NAN;
-//     }
-//     for(i=1;i<N;i++)
-//     {
-//         tmp = getRand();
-//         printf("tmp = %f\n", tmp);
-//         phmm->A[i][i] = log(tmp);
-//         phmm->A[i][i+1] = log(1-tmp);
-//     }
-//     phmm->A[N][N] = 0.0;
-//     printf("sssss\n");
-
-//     phmm->A_topo = (int **) imatrix(1,N,1,N);
-//     clear_imatrix(phmm->A_topo,1,N,1,N);
-//     for(i=1;i<=N;i++)
-//     {
-//         for(j=1;j<=N;j++)
-//         {
-//             if(j==i || j==i+1)
-//                     phmm->A_topo[i][j] = 1;
-//             else
-//                     phmm->A_topo[i][j] = 0;
-//         }
-//     }
-//     printf("sssss\n");
-
-//     phmm->B.miu = (double **) dmatrix(1,N,1,D);
-//     phmm->B.cov = (double **) dmatrix(1,N,1,D);
-//     phmm->B.cov_inv = (double **) dmatrix(1,N,1,D);
-//     for(i=1;i<=N;i++)
-//     {
-//         for(j=1;j<=D;j++)
-//         {
-//             phmm->B.miu[i][j] = getRand()*2-1;
-//             phmm->B.cov[i][j] = getRand()*0.06;
-//             phmm->B.cov_inv[i][j] = 1.0/phmm->B.cov[i][j];
-//         }
-//     }
-//     printf("sssss\n");
-//     return phmm;
-// }
