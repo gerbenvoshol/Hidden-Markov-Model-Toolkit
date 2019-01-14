@@ -2146,14 +2146,14 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 	double **cov = hmm->B.cov; // covariance
 	double **cov_inv = hmm->B.cov_inv;
 
-	double prob1 = - (D / 2.0) * eln(2.0 * M_PI); // -N*log(2pi)/2
+	double prob1 = - 0.5 * D * eln(2.0 * M_PI); // -N*log(2pi)/2
 	double *prob2 = (double*) dvector(1, N);  // -1/2*log(|sigma|)
 	for (i = 1; i <= N; i++) {
 		double tmp = 0.0;
 		for (j = 1; j <= D; j++) {
 			tmp += eln(cov[i][j]);
 		}
-		prob2[i] = - tmp * (D / 2.0);
+		prob2[i] = - tmp * 0.5;
 	}
 
 	for (f = 0; f < T; f++) {
