@@ -98,10 +98,10 @@
 #endif
 
 /* The accuracy for BaumWelch */
-#define DELTA (1E-6)
+#define DELTA (1E-4)
 //#define DELTA (DBL_EPSILON)
 
-#define MIN_COV (1E-6)
+#define MIN_COV (1E-4)
 //#define MIN_COV DBL_EPSILON
 
 /* --- Section with general hmm functions --- */
@@ -2153,7 +2153,7 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 		for (j = 1; j <= D; j++) {
 			tmp += eln(cov[i][j]);
 		}
-		prob2[i] = - tmp * (D / 2.0);
+		prob2[i] = - tmp * 0.5;
 	}
 
 	for (f = 0; f < T; f++) {
