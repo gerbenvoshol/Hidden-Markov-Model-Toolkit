@@ -18,7 +18,9 @@
  ============================================================================
 
  Version History
- 		1.01  Fixed memory leak, fixed the chmm_outprob() function (= P(x|mu, var))
+ 		1.01  Fixed memory leak, fixed the chmm_outprob() function (= P(x|mu, var)), all 
+ 		      values of A, B and pi are now stored as ln() internally instead of converting 
+ 		      them in the HMM functions
 		1.00  Initial release containing basic discrete and continuous hmm functions
 
  CITATION
@@ -96,10 +98,10 @@
 #endif
 
 /* The accuracy for BaumWelch */
-//#define DELTA (1E-9)
-#define DELTA (DBL_EPSILON)
+#define DELTA (1E-6)
+//#define DELTA (DBL_EPSILON)
 
-#define MIN_COV (0.000001)
+#define MIN_COV (1E-6)
 //#define MIN_COV DBL_EPSILON
 
 /* --- Section with general hmm functions --- */
@@ -420,6 +422,55 @@ HMM_EXTERN void free_d3tensor(double ***t, long nrl, long nrh, long ncl, long nc
 
 #ifdef HMMTK_DEFINE
 
+/* Extended exponential function */
+double eexp(double x)
+{
+	if (isnan(x)) {
+		return 0.0;
+	} else {
+		return exp(x);
+	}
+}
+
+/* Extended logarithm function */
+double eln(double x)
+{
+	if (fabs(x) < DBL_EPSILON) {
+		return NAN;
+	} else if (x > 0) {
+		return log(x);
+	} else {
+		fprintf(stderr, "Negative input: %lf\n", x);
+		return x;
+	}
+}
+
+/* Extended logarithm sum function */
+double elnsum(double x, double y)
+{
+	if (isnan(x) || isnan(y)) {
+		if (isnan(x)) {
+			return y;
+		} else {
+			return x;
+		}
+	} else if (x > y) {
+		return x + eln(1 + exp(y - x));
+	} else {
+		return y + eln(1 + exp(x - y));
+	}
+}
+
+/* extended logarithm product function */
+double elnproduct(double x, double y)
+{
+	if (isnan(x) || isnan(y)) {
+		return NAN;
+	} else {
+		return (x + y);
+	}
+}
+
 /* seed for the random number generator */
 static uint64_t seed = 0;
 
@@ -466,6 +517,7 @@ void dhmm_load(char *filename, DHMM *hmm)
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
 			fscanf(fp, "%lf", &(hmm->A[i][j]));
+			hmm->A[i][j] = eln(hmm->A[i][j]);
 		}
 		fscanf(fp, "\n");
 	}
@@ -475,6 +527,7 @@ void dhmm_load(char *filename, DHMM *hmm)
 	for (j = 1; j <= hmm->N; j++) {
 		for (k = 1; k <= hmm->M; k++) {
 			fscanf(fp, "%lf", &(hmm->B[j][k]));
+			hmm->B[j][k] = eln(hmm->B[j][k]);
 		}
 		fscanf(fp, "\n");
 	}
@@ -483,6 +536,7 @@ void dhmm_load(char *filename, DHMM *hmm)
 	hmm->pi = (double *) dvector(1, hmm->N);
 	for (i = 1; i <= hmm->N; i++) {
 		fscanf(fp, "%lf", &(hmm->pi[i]));
+		hmm->pi[i] = eln(hmm->pi[i]);
 	}
 
 	fclose(fp);
@@ -644,7 +698,7 @@ void dhmm_save(char *filename, DHMM *hmm)
 	fprintf(fp, "Transition matrix (A):\n");
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
-			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, hmm->A[i][j]);
+			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, eexp(hmm->A[i][j]));
 		}
 		fprintf(fp, "\n");
 	}
@@ -652,14 +706,14 @@ void dhmm_save(char *filename, DHMM *hmm)
 	fprintf(fp, "Emission probabilities (B):\n");
 	for (j = 1; j <= hmm->N; j++) {
 		for (k = 1; k <= hmm->M; k++) {
-			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, hmm->B[j][k]);
+			fprintf(fp, "%.*e ", OP_DBL_Digs - 1, eexp(hmm->B[j][k]));
 		}
 		fprintf(fp, "\n");
 	}
 
 	fprintf(fp, "Initial state probability (pi):\n");
 	for (i = 1; i <= hmm->N; i++) {
-		fprintf(fp, "%.*e ", OP_DBL_Digs - 1, hmm->pi[i]);
+		fprintf(fp, "%.*e ", OP_DBL_Digs - 1, eexp(hmm->pi[i]));
 	}
 	fprintf(fp, "\n\n");
 
@@ -871,55 +925,6 @@ int dhmm_gensymbol(DHMM *hmm, int q_t)
 	return o_t;
 }
 
-/* Extended exponential function */
-double eexp(double x)
-{
-	if (isnan(x)) {
-		return 0.0;
-	} else {
-		return exp(x);
-	}
-}
-
-/* Extended logarithm function */
-double eln(double x)
-{
-	if (fabs(x) < DBL_EPSILON) {
-		return NAN;
-	} else if (x > 0) {
-		return log(x);
-	} else {
-		fprintf(stderr, "Negative input: %lf\n", x);
-		return x;
-	}
-}
-
-/* Extended logarithm sum function */
-double elnsum(double x, double y)
-{
-	if (isnan(x) || isnan(y)) {
-		if (isnan(x)) {
-			return y;
-		} else {
-			return x;
-		}
-	} else if (x > y) {
-		return x + eln(1 + exp(y - x));
-	} else {
-		return y + eln(1 + exp(x - y));
-	}
-}
-
-/* extended logarithm product function */
-double elnproduct(double x, double y)
-{
-	if (isnan(x) || isnan(y)) {
-		return NAN;
-	} else {
-		return (x + y);
-	}
-}
-
 void dhmm_forward(DHMM *hmm, int T, int *O, double **alpha, double *prob)
 {
 	int	i, j; /* state indices */
@@ -928,7 +933,7 @@ void dhmm_forward(DHMM *hmm, int T, int *O, double **alpha, double *prob)
 
 	/* Initialization */
 	for (i = 1; i <= hmm->N; i++) {
-		alpha[1][i] = elnproduct(eln(hmm->pi[i]), eln(hmm->B[i][O[1]]));
+		alpha[1][i] = elnproduct(hmm->pi[i], hmm->B[i][O[1]]);
 	}
 
 	/* Induction */
@@ -936,9 +941,9 @@ void dhmm_forward(DHMM *hmm, int T, int *O, double **alpha, double *prob)
 		for (j = 1; j <= hmm->N; j++) {
 			logalpha = NAN;
 			for (i = 1; i <= hmm->N; i++) {
-				logalpha = elnsum(logalpha, elnproduct(alpha[t - 1][i], eln(hmm->A[i][j])));
+				logalpha = elnsum(logalpha, elnproduct(alpha[t - 1][i], hmm->A[i][j]));
 			}
-			alpha[t][j] = elnproduct(logalpha, eln(hmm->B[j][O[t]]));
+			alpha[t][j] = elnproduct(logalpha, hmm->B[j][O[t]]);
 		}
 	}
 
@@ -966,7 +971,7 @@ void dhmm_backward(DHMM *hmm, int T, int *O, double **beta, double *prob)
 		for (i = 1; i <= hmm->N; i++) {
 			logbeta = NAN;
 			for (j = 1; j <= hmm->N; j++) {
-				logbeta = elnsum(logbeta, elnproduct(eln(hmm->A[i][j]), elnproduct(eln(hmm->B[j][O[t + 1]]), beta[t + 1][j])));
+				logbeta = elnsum(logbeta, elnproduct(hmm->A[i][j], elnproduct(hmm->B[j][O[t + 1]], beta[t + 1][j])));
 			}
 			beta[t][i] = logbeta;
 		}
@@ -975,7 +980,7 @@ void dhmm_backward(DHMM *hmm, int T, int *O, double **beta, double *prob)
 	/* Termination */
 	*prob = NAN;
 	for (i = 1; i <= hmm->N; i++) {
-		*prob = elnsum(*prob, elnproduct(elnproduct(beta[1][i], eln(hmm->pi[i])), eln(hmm->B[i][O[1]])));
+		*prob = elnsum(*prob, elnproduct(elnproduct(beta[1][i], hmm->pi[i]), hmm->B[i][O[1]]));
 	}
 }
 
@@ -989,7 +994,7 @@ void dhmm_viterbi(DHMM *hmm, int T, int *O, double **delta, int **psi, int *path
 
 	/* Initialization  */
 	for (i = 1; i <= hmm->N; i++) {
-		delta[1][i] = elnproduct(eln(hmm->pi[i]), eln(hmm->B[i][O[1]]));
+		delta[1][i] = elnproduct(hmm->pi[i], hmm->B[i][O[1]]);
 		psi[1][i] = 0;
 	}
 
@@ -999,13 +1004,13 @@ void dhmm_viterbi(DHMM *hmm, int T, int *O, double **delta, int **psi, int *path
 			maxval = -DBL_MAX;
 			maxvalind = 1;
 			for (i = 1; i <= hmm->N; i++) {
-				val = elnproduct(delta[t - 1][i], eln(hmm->A[i][j]));
+				val = elnproduct(delta[t - 1][i], hmm->A[i][j]);
 				if (val > maxval) {
 					maxval = val;
 					maxvalind = i;
 				}
 			}
-			delta[t][j] = elnproduct(maxval, eln(hmm->B[j][O[t]]));
+			delta[t][j] = elnproduct(maxval, hmm->B[j][O[t]]);
 			psi[t][j] = maxvalind;
 		}
 	}
@@ -1054,7 +1059,7 @@ void dhmm_compxi(DHMM *hmm, int T, int *O, double **alpha, double **beta, double
 		normalizer = NAN;
 		for (i = 1; i <= hmm->N; i++) {
 			for (j = 1; j <= hmm->N; j++) {
-				xi[t][i][j] = elnproduct(alpha[t][i], elnproduct(eln(hmm->A[i][j]), elnproduct(eln(hmm->B[j][O[t + 1]]), beta[t + 1][j])));
+				xi[t][i][j] = elnproduct(alpha[t][i], elnproduct(hmm->A[i][j], elnproduct(hmm->B[j][O[t + 1]], beta[t + 1][j])));
 				normalizer = elnsum(normalizer, xi[t][i][j]);
 			}
 		}
@@ -1810,6 +1815,7 @@ void chmm_load(char *filename, CHMM *hmm)
 	for (i = 1; i <= hmm->N; i++) {
 		for (j = 1; j <= hmm->N; j++) {
 			fscanf(fp, "%lf", &(hmm->A[i][j]));
+			hmm->A[i][j] = eln(hmm->A[i][j]);
 		}
 		fscanf(fp, "\n");
 	}
@@ -1836,6 +1842,7 @@ void chmm_load(char *filename, CHMM *hmm)
 	hmm->pi = (double *) dvector(1, hmm->N);
 	for (i = 1; i <= hmm->N; i++) {
 		fscanf(fp, "%lf", &(hmm->pi[i]));
+		hmm->pi[i] = eln(hmm->pi[i]);
 	}
 
 	/* Allocate and calculate inverse covariance */
@@ -2175,7 +2182,7 @@ void chmm_forward(CHMM *hmm, int T, double **outprob, double **alpha, double *pp
 	/* 1. Initialization */
 
 	for (i = 1; i <= hmm->N; i++) {
-		alpha[1][i] = (eln(hmm->pi[i]) + outprob[i][1]);
+		alpha[1][i] = (hmm->pi[i] + outprob[i][1]);
 	}
 
 	/* 2. Induction */
@@ -2184,7 +2191,7 @@ void chmm_forward(CHMM *hmm, int T, double **outprob, double **alpha, double *pp
 		for (j = 1; j <= hmm->N; j++) {
 			sum = NAN;
 			for (i = 1; i <= hmm->N; i++) {
-				sum = elnsum(sum, (alpha[t][i] + eln(hmm->A[i][j])));
+				sum = elnsum(sum, elnproduct(alpha[t][i], hmm->A[i][j]));
 			}
 			alpha[t + 1][j] = (sum + outprob[j][t + 1]);
 		}
@@ -2215,7 +2222,7 @@ void chmm_backward(CHMM *hmm, int T, double **outprob, double **beta, double *pp
 		for (i = 1; i <= hmm->N; i++) {
 			sum = NAN;
 			for (j = 1; j <= hmm->N; j++) {
-				sum = elnsum(sum, elnproduct(elnproduct(eln(hmm->A[i][j]), outprob[j][t + 1]), beta[t + 1][j]));
+				sum = elnsum(sum, elnproduct(elnproduct(hmm->A[i][j], outprob[j][t + 1]), beta[t + 1][j]));
 			}
 			beta[t][i] = sum;
 		}
@@ -2224,7 +2231,7 @@ void chmm_backward(CHMM *hmm, int T, double **outprob, double **beta, double *pp
 	/* 3. Termination */
 	*pprob = NAN;
 	for (i = 1; i <= hmm->N; i++) {
-		*pprob = elnsum(*pprob, elnproduct(eln(hmm->pi[i]), elnproduct(outprob[i][1], beta[1][i])));
+		*pprob = elnsum(*pprob, elnproduct(hmm->pi[i], elnproduct(outprob[i][1], beta[1][i])));
 	}
 }
 
@@ -2238,7 +2245,7 @@ void chmm_viterbi(CHMM *hmm, int T, double **outprob, double **delta, int **psi,
 
 	/* Initialization  */
 	for (i = 1; i <= hmm->N; i++) {
-		delta[1][i] = elnproduct(eln(hmm->pi[i]), outprob[i][1]);
+		delta[1][i] = elnproduct(hmm->pi[i], outprob[i][1]);
 		psi[1][i] = 0;
 	}
 
@@ -2248,7 +2255,7 @@ void chmm_viterbi(CHMM *hmm, int T, double **outprob, double **delta, int **psi,
 			maxval = -DBL_MAX;
 			maxvalind = 1;
 			for (i = 1; i <= hmm->N; i++) {
-				val = elnproduct(delta[t - 1][i], eln(hmm->A[i][j]));
+				val = elnproduct(delta[t - 1][i], hmm->A[i][j]);
 				if (val > maxval) {
 					maxval = val;
 					maxvalind = i;
@@ -2303,7 +2310,7 @@ void chmm_compxi(CHMM *hmm, int T, double **outprob, double **alpha, double **be
 		normalizer = NAN;
 		for (i = 1; i <= hmm->N; i++) {
 			for (j = 1; j <= hmm->N; j++) {
-				xi[t][i][j] = elnproduct(alpha[t][i], elnproduct(eln(hmm->A[i][j]), elnproduct(outprob[j][t + 1], beta[t + 1][j])));
+				xi[t][i][j] = elnproduct(alpha[t][i], elnproduct(hmm->A[i][j], elnproduct(outprob[j][t + 1], beta[t + 1][j])));
 				normalizer = elnsum(normalizer, xi[t][i][j]);
 			}
 		}
