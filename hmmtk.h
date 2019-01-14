@@ -18,7 +18,7 @@
  ============================================================================
 
  Version History
- 		1.01  Fixed memory leak
+ 		1.01  Fixed memory leak, fixed the chmm_outprob() function (= P(x|mu, var))
 		1.00  Initial release containing basic discrete and continuous hmm functions
 
  CITATION
@@ -48,8 +48,7 @@
  The basic framework (including variable names, subroutine names) is highly similar to the
  UMDHMM package (Tapas Kanungo, see references), but the actual implementation of those
  subroutines is different. For example UMDHMM uses scaling to achieve numerical stability, but
- in this package we choose to use the logarithm according to the paper by Mann (2006). The
- continuous HMM functions are adapted from those of Peisong Wang.
+ in this package we choose to use the logarithm according to the paper by Mann (2006).
 
  REFERENCES
 
@@ -2140,14 +2139,14 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 	double **cov = hmm->B.cov; // covariance
 	double **cov_inv = hmm->B.cov_inv;
 
-	double prob1 = - 0.5 * N * eln(2.0 * M_PI); // -N*log(2pi)/2
+	double prob1 = - (D / 2.0) * eln(2.0 * M_PI); // -N*log(2pi)/2
 	double *prob2 = (double*) dvector(1, N);  // -1/2*log(|sigma|)
 	for (i = 1; i <= N; i++) {
 		double tmp = 0.0;
 		for (j = 1; j <= D; j++) {
 			tmp += eln(cov[i][j]);
 		}
-		prob2[i] = - tmp * 0.5;
+		prob2[i] = - tmp * (D / 2.0);
 	}
 
 	for (f = 0; f < T; f++) {
