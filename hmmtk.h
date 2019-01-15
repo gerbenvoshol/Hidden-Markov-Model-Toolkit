@@ -877,7 +877,7 @@ int dhmm_geninitialstate(DHMM *hmm)
 	value = hmm_rand();
 	q_t = hmm->N;
 	for (i = 1; i <= hmm->N; i++) {
-		cummulative += hmm->pi[i];
+		cummulative += eexp(hmm->pi[i]);
 		if (value < cummulative) {
 			q_t = i;
 			break;
@@ -896,7 +896,7 @@ int dhmm_gennextstate(DHMM *hmm, int q_t)
 	value = hmm_rand();
 	q_next = hmm->N;
 	for (j = 1; j <= hmm->N; j++) {
-		cummulative += hmm->A[q_t][j];
+		cummulative += eexp(hmm->A[q_t][j]);
 		if (value < cummulative) {
 			q_next = j;
 			break;
@@ -915,7 +915,7 @@ int dhmm_gensymbol(DHMM *hmm, int q_t)
 	value = hmm_rand();
 	o_t = hmm->M;
 	for (j = 1; j <= hmm->M; j++) {
-		cummulative += hmm->B[q_t][j];
+		cummulative += eexp(hmm->B[q_t][j]);
 		if (value < cummulative) {
 			o_t = j;
 			break;
@@ -1138,7 +1138,7 @@ void dhmm_baumwelch(DHMM *hmm, int T, int *O, double **alpha, double **beta, dou
 		iter++;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	*pniter = iter;
 	*plogprobfinal = logprobf; /* log P(O|estimated model) */
@@ -1336,7 +1336,7 @@ void dhmm_baumwelch_multi(DHMM *hmm, int *T, int L, int **O, double **alpha, dou
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -1539,7 +1539,7 @@ void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, do
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -1759,7 +1759,7 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -2487,6 +2487,8 @@ void chmm_baumwelch(CHMM *hmm, struct samples *p_samples, int *piter, double *pl
 		
 		printf("iter %d, delta is : %.20f\n", *piter, delta);
 
+		chmm_save("temp.hmm", hmm);
+
 		if (fabs(delta) < DELTA) {
 			break;
 		}
@@ -2536,7 +2538,7 @@ int chmm_geninitialstate(CHMM *hmm)
 	value = hmm_rand();
 	q_t = hmm->N;
 	for (i = 1; i <= hmm->N; i++) {
-		cummulative += hmm->pi[i];
+		cummulative += eexp(hmm->pi[i]);
 		if (value < cummulative) {
 			q_t = i;
 			break;
@@ -2555,7 +2557,7 @@ int chmm_gennextstate(CHMM *hmm, int q_t)
 	value = hmm_rand();
 	q_next = hmm->N;
 	for (j = 1; j <= hmm->N; j++) {
-		cummulative += hmm->A[q_t][j];
+		cummulative += eexp(hmm->A[q_t][j]);
 		if (value < cummulative) {
 			q_next = j;
 			break;

@@ -90,7 +90,7 @@ int main (int argc, char **argv)
 	}
 
 	printf("Hidden states:\n");
-	for (int i = 1; i <= T * hmm.D; i++) {
+	for (int i = 1; i <= T; i++) {
 		printf("%d\n", q[i]);
 	}
 
