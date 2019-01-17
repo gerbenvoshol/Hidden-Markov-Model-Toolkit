@@ -2146,16 +2146,16 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 	double **cov = hmm->B.cov; // covariance
 	double **cov_inv = hmm->B.cov_inv;
 
-	// logP(x)=−2ln(2π)− lnσi − 1/2 (xi −μi)/σi2
+	// logP(x)=−d/2 ln(2π) − 1/2 * ln(σi2) − 1/2 (xi −μi)/σi2
 
-	double prob1 = - 0.5 * D * eln(2.0 * M_PI); // -−2ln(2π)
-	double *prob2 = (double*) dvector(1, N);  // − lnσi
+	double prob1 = - 0.5 * D * eln(2.0 * M_PI); // -d/2 ln(2π)
+	double *prob2 = (double*) dvector(1, N);  // − 1/2 * ln(σi2)
 	for (i = 1; i <= N; i++) {
 		double tmp = 0.0;
 		for (j = 1; j <= D; j++) {
 			tmp += eln(sqrt(cov[i][j]));
 		}
-		prob2[i] = - tmp;
+		prob2[i] = - 0.5 tmp;
 	}
 
 	for (f = 0; f < T; f++) {
@@ -2165,10 +2165,10 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 			tmp = 0.0;
 			for (j = 1; j <= D; j++) {
 				x = feature_tmp[j - 1] - miu[i][j];
-				// (xi −μi)/σi2
+				// (xi −μi) / σi2
 				tmp += x * x * cov_inv[i][j];
 			}
-			// logP(x)=−2ln(2π)− lnσi − 1/2 (xi −μi)/σi2
+			// logP(x)=−d/2 ln(2π) − 1/2 * ln(σi2) − 1/2 (xi −μi)/σi2
 			outprob[i][f + 1] = prob1 + prob2[i] - 0.5 * tmp;
 		}
 	}
