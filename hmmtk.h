@@ -2153,9 +2153,9 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 	for (i = 1; i <= N; i++) {
 		double tmp = 0.0;
 		for (j = 1; j <= D; j++) {
-			tmp += eln(sqrt(cov[i][j]));
+			tmp += eln(cov[i][j]);
 		}
-		prob2[i] = - 0.5 tmp;
+		prob2[i] = - 0.5 * tmp;
 	}
 
 	for (f = 0; f < T; f++) {
