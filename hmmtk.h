@@ -1,4 +1,4 @@
-/* hmmtk.h - v1.01 - simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) Toolkit -- GNU GPL
+/* hmmtk.h - v1.02 - simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) Toolkit -- GNU GPL
 					no warranty is offered or implied; use this code at your own risk
 
 	 This is a single header file with a bunch of useful HMM functions
@@ -18,6 +18,7 @@
  ============================================================================
 
  Version History
+ 		1.02  Added labelled/constrained Baum-Welch training
  		1.01  Fixed memory leak, fixed the chmm_outprob() function (= P(x|mu, var)), all 
  		      values of A, B and pi are now stored as ln() internally instead of converting 
  		      them in the HMM functions
@@ -83,6 +84,10 @@
 #include <math.h>
 #include <unistd.h>
 #include <float.h>
+
+#ifdef USE_OPENMP
+	#include <omp.h>
+#endif
 
 #ifdef __cplusplus
 #define HMM_EXTERN   extern "C"
@@ -171,9 +176,15 @@ HMM_EXTERN void dhmm_baumwelch_multi(DHMM *hmm, int *T, int L, int **O, double *
 /* Probability maximized HMM (Given an unknown HMM and several sequences of observations, find parameters that maximize P(OL | M)
  * with Tied Observations */
 HMM_EXTERN void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, double **alpha, double **beta, double **gamma, int *pniter, double *plogprobinit, double *plogprobfinal);
+/* Probability, that the sequence of symbols O1, . . . , OT is generated, and the system is in state N at time t. */
+HMM_EXTERN void dhmm_forward_constrained(DHMM *hmm, int T, int *O, char *label, double **alpha, double *prob);
+/* Probability, that the system starts in state N at time t and then generates the sequence of symbols O1,...,OT. */
+HMM_EXTERN void dhmm_backward_constrained(DHMM *hmm, int T, int *O, char *label, double **beta, double *prob);
 /* Probability maximized HMM (Given an unknown HMM and several sequences of observations, find parameters that maximize P(OL | M)
  * with Tied Observations and Constrained */
 HMM_EXTERN void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, int **O, char **cconstrmat, double **alpha, double **beta, double **gamma, int *pniter, double *plogprobinit, double *plogprobfinal);
+/* Add some noise to avoid local maxima */
+HMM_EXTERN void dhmm_baumwelch_multi_noise(DHMM *hmm, int *T, int L, int **O, double **alpha, double **beta, double **gamma, int *pniter, double *plogprobinit, double *plogprobfinal);
 
 /*
  * Simple doubly linked list implementation.
@@ -344,7 +355,7 @@ typedef struct {
 
 /* TODO: make the features dynamic */
 /* NOTE: Do NOT forget to set DIM */
-#define DIM 1
+#define DIM 4
 
 typedef struct feature_node {
 	double feature[DIM];
@@ -389,6 +400,8 @@ HMM_EXTERN void chmm_backward(CHMM *hmm, int T, double **outprob, double **beta,
 HMM_EXTERN void chmm_viterbi(CHMM *hmm, int T, double **outprob, double **delta, int **psi, int *path, double *prob);
 /* Probability maximized HMM (Given an unknown HMM and several sequences of observations, find parameters that maximize P(OL | M)*/
 HMM_EXTERN void chmm_baumwelch(CHMM *hmm, struct samples *p_samples, int *piter, double *plogprobinit, double *plogprobfinal, int maxiter);
+/* TODO */
+HMM_EXTERN void chmm_baumwelch_noise(CHMM *hmm, struct samples *p_samples, int *piter, double *plogprobinit, double *plogprobfinal, int maxiter);
 
 /* Public domain functions from Numerical Recipies */
 HMM_EXTERN void nrerror();
@@ -445,7 +458,62 @@ double eln(double x)
 	}
 }
 
-/* Extended logarithm sum function */
+/* FELNSUM_INTSCALE defines the precision of the calculation; the
+ * default of 1000.0 means rounding differences to the nearest 0.001
+ * nat. FELNSUM_TBL defines the size of the lookup table; the
+ * default of 16000 means entries are calculated for differences of 0
+ * to 16.000 nats (when FELNSUM_INTSCALE is 1000.0).  e^{-FELNSUM_TBL /
+ * FELNSUM_INTSCALE} should be on the order of the machine DBL_EPSILON,
+ * typically 2.2e-16. The maximum relative error is on the order of 
+ * 1/FELNSUM_INTSCALE, or 0.001
+ */
+#define FELNSUM_INTSCALE   1000.0f /* Precision                */
+#define FELNSUM_TBL        36001   /* Size of the lookup table (ln(2.2204460492503131e-16) DBL_EPSILON)) */
+
+static double felnsum_lookup[FELNSUM_TBL];
+
+/* Fill the lookup table */
+void felnsum_init(void)
+{
+	/* Init the lookup table */
+	for (int i = 0; i < FELNSUM_TBL; i++) {
+		felnsum_lookup[i] = log(1 + exp((double) -i / FELNSUM_INTSCALE));
+	}
+}
+
+#ifdef FAST_ELNSUM
+/* Fast extended logarithm sum function using a lookup table as done by HMMer3.0 */
+double elnsum(double x, double y)
+{
+	static int firsttime = 1;
+  	
+  	if (firsttime) {
+  		felnsum_init();
+  		firsttime = 0;
+  	}
+
+	if (isnan(x) || isnan(y)) {
+		if (isnan(x)) {
+			return y;
+		} else {
+			return x;
+		}
+	} else if (x > y) {
+		/* If the numbers are out of range of the table we return the max */
+		if ((x - y) > 36.0f) {
+			return x;
+		}
+		return x + felnsum_lookup[(int)((x - y) * FELNSUM_INTSCALE)];
+	} else {
+		/* If the numbers are out of range of the table we return the max */
+		if ((y - x) > 36.0f) {
+			return y;
+		}
+		return y + felnsum_lookup[(int)((y - x) * FELNSUM_INTSCALE)];
+	}
+}
+#else
+/* Slow accurate extended logarithm sum function */
 double elnsum(double x, double y)
 {
 	if (isnan(x) || isnan(y)) {
@@ -460,6 +528,7 @@ double elnsum(double x, double y)
 		return y + eln(1 + exp(x - y));
 	}
 }
+#endif
 
 /* extended logarithm product function */
 double elnproduct(double x, double y)
@@ -578,15 +647,15 @@ void dhmm_init(DHMM *hmm, int N, char *nN, int M, char *nM, int seed)
 
 	hmm->A = (double **) dmatrix(1, hmm->N, 1, hmm->N);
 	for (i = 1; i <= hmm->N; i++) {
-		sum = 0.0;
+		sum = NAN;
 
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = hmm_rand();
-			sum += hmm->A[i][j];
+			hmm->A[i][j] = eln(hmm_rand());
+			sum = elnsum(sum, hmm->A[i][j]);
 		}
 
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] /= sum;
+			hmm->A[i][j] = elnproduct(hmm->A[i][j], -sum);
 		}
 	}
 
@@ -594,12 +663,12 @@ void dhmm_init(DHMM *hmm, int N, char *nN, int M, char *nM, int seed)
 	for (j = 1; j <= hmm->N; j++) {
 		sum = 0.0;
 		for (k = 1; k <= hmm->M; k++) {
-			hmm->B[j][k] = hmm_rand();
-			sum += hmm->B[j][k];
+			hmm->B[j][k] = eln(hmm_rand());
+			sum = elnsum(sum, hmm->B[j][k]);
 		}
 
 		for (k = 1; k <= hmm->M; k++) {
-			hmm->B[j][k] /= sum;
+			hmm->B[j][k] = elnproduct(hmm->B[j][k], -sum);
 		}
 	}
 
@@ -612,6 +681,7 @@ void dhmm_init(DHMM *hmm, int N, char *nN, int M, char *nM, int seed)
 
 	for (i = 1; i <= hmm->N; i++) {
 		hmm->pi[i] /= sum;
+		hmm->pi[i] = eln(hmm->pi[i]);
 	}
 }
 
@@ -1551,6 +1621,84 @@ void dhmm_baumwelch_multiwt(DHMM *hmm, int *tied_obs, int *T, int L, int **O, do
 	*plogprobfinal = prodlogprob; /* log P(O(L)|estimated model) */
 }
 
+void dhmm_forward_constrained(DHMM *hmm, int T, int *O, char *label, double **alpha, double *prob)
+{
+	int	i, j; /* state indices */
+	int	t;    /* time index */
+	double logalpha;
+
+	/* Initialization */
+	for (i = 1; i <= hmm->N; i++) {
+		/* if the name of the state we are in does not match, set the probability to 0 (NAN in eln) constrained
+		 * we use a space to have unconstrained parts of the hidden states */
+		if ((hmm->nN[i] != label[0]) && (label[0] != ' ')) {
+			alpha[1][i] = NAN;
+		} else {
+			alpha[1][i] = elnproduct(hmm->pi[i], hmm->B[i][O[1]]);
+		}
+	}
+
+	/* Induction */
+	for (t = 2; t <= T; t++) {
+		for (j = 1; j <= hmm->N; j++) {
+			logalpha = NAN;
+			for (i = 1; i <= hmm->N; i++) {
+				logalpha = elnsum(logalpha, elnproduct(alpha[t - 1][i], hmm->A[i][j]));
+			}
+			/* if the name of the state we are in does not match, set the probability to 0 (NAN in eln) constrained
+			 * we use a space to have unconstrained parts of the hidden states */
+			if ((hmm->nN[j] != label[t - 1]) && (label[t - 1] != ' ')) {
+				alpha[t][j] = NAN;
+			} else {
+				alpha[t][j] = elnproduct(logalpha, hmm->B[j][O[t]]);
+			}
+		}
+	}
+
+	/* Termination */
+	*prob = NAN;
+	for (i = 1; i <= hmm->N; i++) {
+		*prob = elnsum(*prob, alpha[T][i]);
+	}
+}
+
+void dhmm_backward_constrained(DHMM *hmm, int T, int *O, char *label, double **beta, double *prob)
+{
+	int i, j;   /* state indices */
+	int t;      /* time index */
+	double logbeta;
+
+
+	/* Initialization */
+	for (i = 1; i <= hmm->N; i++) {
+		beta[T][i] = 0.0;
+	}
+
+	/* Induction */
+	for (t = T - 1; t >= 1; t--) {
+		for (i = 1; i <= hmm->N; i++) {
+			logbeta = NAN;
+			for (j = 1; j <= hmm->N; j++) {
+				logbeta = elnsum(logbeta, elnproduct(hmm->A[i][j], elnproduct(hmm->B[j][O[t + 1]], beta[t + 1][j])));
+			}
+			/* if the name of the state we are in does not match, set the probability to 0 (NAN in eln) constrained
+			 * we use a space to have unconstrained parts of the hidden states */
+			if ((hmm->nN[i] != label[t - 1]) && (label[t - 1] != ' ')) {
+				beta[t][i] = NAN;	
+			} else {
+				beta[t][i] = logbeta;
+			}
+		}
+	}
+
+	/* Termination */
+	*prob = NAN;
+	for (i = 1; i <= hmm->N; i++) {
+		*prob = elnsum(*prob, elnproduct(elnproduct(beta[1][i], hmm->pi[i]), hmm->B[i][O[1]]));
+	}
+}
+
+
 void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, int **O, char **cconstrmat, double **alpha, double **beta, double **gamma, int *pniter, double *plogprobinit, double *plogprobfinal)
 {
 	int	i, j, k;
@@ -1587,8 +1735,8 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 	}
 
 	for (l = 1; l <= L; l++) {
-		dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
-		dhmm_backward(hmm, T[l], O[l], beta, &logprobb);
+		dhmm_forward_constrained(hmm, T[l], O[l], cconstrmat[l - 1], alpha, &logprobf);
+		dhmm_backward_constrained(hmm, T[l], O[l], cconstrmat[l - 1], beta, &logprobb);
 		dhmm_compgamma(hmm, T[l], alpha, beta, gamma);
 
 		xi = d3tensor(1, T[l], 1, hmm->N, 1, hmm->N);
@@ -1600,14 +1748,6 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 				numerator = NAN;
 				denominator = NAN;
 				for (t = 1; t <= T[l] - 1; t++) {
-					/* if the name of the state we are in does not match, set the probability to 0 (NAN in eln) constrained
-					 * we use a space to have unconstrained parts of the hidden states */
-					if (hmm->nN[i] != cconstrmat[l - 1][t - 1]) {
-						if (cconstrmat[l - 1][t - 1] != ' ') {
-							xi[t][i][j] = NAN;
-							gamma[t][i] = NAN;
-						}
-					}
 					numerator = elnsum(numerator, xi[t][i][j]);
 					denominator = elnsum(denominator, gamma[t][i]);
 				}
@@ -1679,8 +1819,8 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 		}
 
 		for (l = 1; l <= L; l++) {
-			dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
-			dhmm_backward(hmm, T[l], O[l], beta, &logprobb);
+			dhmm_forward_constrained(hmm, T[l], O[l], cconstrmat[l - 1], alpha, &logprobf);
+			dhmm_backward_constrained(hmm, T[l], O[l], cconstrmat[l - 1], beta, &logprobb);
 			dhmm_compgamma(hmm, T[l], alpha, beta, gamma);
 
 			xi = d3tensor(1, T[l], 1, hmm->N, 1, hmm->N);
@@ -1692,14 +1832,6 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 					numerator = NAN;
 					denominator = NAN;
 					for (t = 1; t <= T[l] - 1; t++) {
-						/* if the name of the state we are in does not match, set the probability to 0 (NAN in eln) constrained
-						 * we use a space to have unconstrained parts of the hidden states */
-						if (hmm->nN[i] != cconstrmat[l - 1][t - 1]) {
-							if (cconstrmat[l - 1][t - 1] != ' ') {
-								xi[t][i][j] = NAN;
-								gamma[t][i] = NAN;
-							}
-						}
 						numerator = elnsum(numerator, xi[t][i][j]);
 						denominator = elnsum(denominator, gamma[t][i]);
 					}
@@ -1759,7 +1891,285 @@ void dhmm_baumwelch_multi_constrained(DHMM *hmm, int *tied_obs, int *T, int L, i
 		logprobprev = prodlogprob;
 
 		printf("iteration %i: delta: %lf (%lf)\n", iter, delta, DELTA);
-	} while ((delta > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
+
+	/* Cleanup */
+	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
+	free_dmatrix(denominatorA, 1, hmm->N, 1, hmm->N);
+	free_dmatrix(numeratorB, 1, hmm->N, 1, hmm->M);
+	free_dmatrix(denominatorB, 1, hmm->N, 1, hmm->M);
+
+	*pniter = iter;
+	*plogprobfinal = prodlogprob; /* log P(O(L)|estimated model) */
+}
+
+void dhmm_baumwelch_multi_noise(DHMM *hmm, int *T, int L, int **O, double **alpha, double **beta, double **gamma, int *pniter, double *plogprobinit, double *plogprobfinal)
+{
+	int	i, j, k;
+	int	t, iter = 1, l = 0;
+
+	double logprobf = NAN, logprobb;
+	double prodlogprob = 0.0;
+	
+	double ***xi;
+	double delta, logprobprev;
+
+	double noise;
+	double total;
+	if (seed == 0) {
+		/* Generate a random seed */
+		seed = hmm_seed();
+		/* Seed the random number generator */
+		hmm_srand(seed);
+	}
+	double amplitude = 1.0;
+
+	printf("Seed used: %llu\n", seed);
+
+	double numerator;
+	double denominator;
+	double **numeratorA = dmatrix(1, hmm->N, 1, hmm->N);
+	double **denominatorA = dmatrix(1, hmm->N, 1, hmm->N);
+	double **numeratorB = dmatrix(1, hmm->N, 1, hmm->M);
+	double **denominatorB = dmatrix(1, hmm->N, 1, hmm->M);
+
+	double *logpi = dvector(1, hmm->N);
+	double pisum = NAN;
+/* START first iteration */
+	/* Initialize the numerators and denominators over l */
+	pisum = NAN;
+	for (i = 1; i <= hmm->N; i++) {
+		logpi[i] = NAN;
+		for (j = 1; j <= hmm->N; j++) {
+			numeratorA[i][j] = NAN;
+			denominatorA[i][j] = NAN;
+		}
+		for (k = 1; k <= hmm->M; k++) {
+			numeratorB[i][k] = NAN;
+			denominatorB[i][k] = NAN;
+		}
+	}
+
+	for (l = 1; l <= L; l++) {
+		dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
+		dhmm_backward(hmm, T[l], O[l], beta, &logprobb);
+		dhmm_compgamma(hmm, T[l], alpha, beta, gamma);
+		
+		xi = d3tensor(1, T[l], 1, hmm->N, 1, hmm->N);
+		dhmm_compxi(hmm, T[l], O[l], alpha, beta, xi);
+
+		for (i = 1; i <= hmm->N; i++) {
+			logpi[i] = elnsum(logpi[i], gamma[1][i]);
+			for (j = 1; j <= hmm->N; j++) {
+				numerator = NAN;
+				denominator = NAN;
+				for (t = 1; t <= T[l] - 1; t++) {
+					numerator = elnsum(numerator, xi[t][i][j]);
+					denominator = elnsum(denominator, gamma[t][i]);
+				}
+				numeratorA[i][j] = elnsum(numeratorA[i][j], numerator);
+				denominatorA[i][j] = elnsum(denominatorA[i][j], denominator);
+			}
+
+			for (k = 1; k <= hmm->M; k++) {
+				numerator = NAN;
+				denominator = NAN;
+				for (t = 1; t <= T[l]; t++) {
+					if (O[l][t] == k) {
+						numerator = elnsum(numerator, gamma[t][i]);
+					}
+					denominator = elnsum(denominator, gamma[t][i]);
+				}
+				numeratorB[i][k] = elnsum(numeratorB[i][k], numerator);
+				denominatorB[i][k] = elnsum(denominatorB[i][k], denominator);
+			}
+		}
+
+		free_d3tensor(xi, 1, T[l], 1, hmm->N, 1, hmm->N);
+	}
+
+	/* reestimate frequency of state i in time t=1 */
+	for (i = 1; i <= hmm->N; i++) {
+		pisum = elnsum(pisum, logpi[i]);
+	}
+
+	for (i = 1; i <= hmm->N; i++) {
+		hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+	}
+
+	/* reestimate transition matrix  and symbol prob in each state */
+	for (i = 1; i <= hmm->N; i++) {
+		for (j = 1; j <= hmm->N; j++) {
+			hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+		}
+		for (k = 1; k <= hmm->M; k++) {
+			hmm->B[i][k] = eexp(elnproduct(numeratorB[i][k], -denominatorB[i][k]));
+		}
+	}
+
+	/* Add noise and renormalize afterwards */
+	for (i = 1; i <= hmm->N; i++) {
+		total = 0.0;
+		/* Add noise to transition probabilities */
+		for (j = 1; j <= hmm->N; j++) {
+			noise = amplitude * pow(0.8, iter) * hmm->A[i][j] * hmm_rand();
+			hmm->A[i][j] += noise;
+			total += hmm->A[i][j];
+		}
+		/* Renormalize the transition probabilities */
+		if (total > 0) {
+			for (j = 1; j <= hmm->N; j++) {
+				hmm->A[i][j] /= total;
+			}
+		}
+
+		total = 0.0;
+		/* Add noise to emission probabilities */
+		for (k = 1; k <= hmm->M; k++) {
+			noise = amplitude * pow(0.8, iter) * hmm->B[i][k] * hmm_rand();
+			hmm->B[i][k] += noise;
+			total += hmm->B[i][k];
+		}
+		/* Renormalize the emission probabilities */
+		if (total > 0) {
+			for (k = 1; k <= hmm->M; k++) {
+				hmm->B[i][k] /= total;
+			}
+		}
+	}
+
+	/* Calculate the probabilities with the newly estimated model */
+	*plogprobinit = 0.0;
+	for (l = 1; l <= L; l++) {
+		dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
+		*plogprobinit = elnproduct(*plogprobinit, logprobf); /* log P(O(L) |intial model) */
+	}
+
+	logprobprev = *plogprobinit;
+/* END first iteration */
+	
+
+	do {
+		iter++;
+		/* Initialize the numerators and denominators over l */
+		pisum = NAN;
+		for (i = 1; i <= hmm->N; i++) {
+			logpi[i] = NAN;
+			for (j = 1; j <= hmm->N; j++) {
+				numeratorA[i][j] = NAN;
+				denominatorA[i][j] = NAN;
+			}
+			for (k = 1; k <= hmm->M; k++) {
+				numeratorB[i][k] = NAN;
+				denominatorB[i][k] = NAN;
+			}
+		}
+
+		for (l = 1; l <= L; l++) {
+			dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
+			dhmm_backward(hmm, T[l], O[l], beta, &logprobb);
+			dhmm_compgamma(hmm, T[l], alpha, beta, gamma);
+			
+			xi = d3tensor(1, T[l], 1, hmm->N, 1, hmm->N);
+			dhmm_compxi(hmm, T[l], O[l], alpha, beta, xi);
+
+			for (i = 1; i <= hmm->N; i++) {
+				logpi[i] = elnsum(logpi[i], gamma[1][i]);
+				for (j = 1; j <= hmm->N; j++) {
+					numerator = NAN;
+					denominator = NAN;
+					for (t = 1; t <= T[l] - 1; t++) {
+						numerator = elnsum(numerator, xi[t][i][j]);
+						denominator = elnsum(denominator, gamma[t][i]);
+					}
+					numeratorA[i][j] = elnsum(numeratorA[i][j], numerator);
+					denominatorA[i][j] = elnsum(denominatorA[i][j], denominator);
+				}
+
+				for (k = 1; k <= hmm->M; k++) {
+					numerator = NAN;
+					denominator = NAN;
+					for (t = 1; t <= T[l]; t++) {
+						if (O[l][t] == k) {
+							numerator = elnsum(numerator, gamma[t][i]);
+						}
+						denominator = elnsum(denominator, gamma[t][i]);
+					}
+					numeratorB[i][k] = elnsum(numeratorB[i][k], numerator);
+					denominatorB[i][k] = elnsum(denominatorB[i][k], denominator);
+				}
+			}
+
+			free_d3tensor(xi, 1, T[l], 1, hmm->N, 1, hmm->N);
+		}
+
+		/* reestimate frequency of state i in time t=1 */
+		for (i = 1; i <= hmm->N; i++) {
+			pisum = elnsum(pisum, logpi[i]);
+		}
+
+		for (i = 1; i <= hmm->N; i++) {
+			hmm->pi[i] = eexp(elnproduct(logpi[i], -pisum));
+		}
+
+		/* reestimate transition matrix  and symbol prob in each state */
+		for (i = 1; i <= hmm->N; i++) {
+			for (j = 1; j <= hmm->N; j++) {
+				hmm->A[i][j] = eexp(elnproduct(numeratorA[i][j], -denominatorA[i][j]));
+			}
+			for (k = 1; k <= hmm->M; k++) {
+				hmm->B[i][k] = eexp(elnproduct(numeratorB[i][k], -denominatorB[i][k]));
+			}
+		}
+
+		/* Add noise and renormalize afterwards */
+		for (i = 1; i <= hmm->N; i++) {
+			total = 0.0;
+			/* Add noise to transition probabilities */
+			for (j = 1; j <= hmm->N; j++) {
+				noise = amplitude * pow(0.8, iter) * hmm->A[i][j] * hmm_rand();
+				hmm->A[i][j] += noise;
+				total += hmm->A[i][j];
+			}
+			/* Renormalize the transition probabilities */
+			if (total > 0) {
+				for (j = 1; j <= hmm->N; j++) {
+					hmm->A[i][j] /= total;
+				}
+			}
+
+			total = 0.0;
+			/* Add noise to emission probabilities */
+			for (k = 1; k <= hmm->M; k++) {
+				noise = amplitude * pow(0.8, iter) * hmm->B[i][k] * hmm_rand();
+				hmm->B[i][k] += noise;
+				total += hmm->B[i][k];
+			}
+			/* Renormalize the emission probabilities */
+			if (total > 0) {
+				for (k = 1; k <= hmm->M; k++) {
+					hmm->B[i][k] /= total;
+				}
+			}
+		}
+
+		/* Calculate the probabilities with the newly estimated model */
+		prodlogprob = 0.0;
+		for (l = 1; l <= L; l++) {
+			dhmm_forward(hmm, T[l], O[l], alpha, &logprobf);
+			prodlogprob = elnproduct(prodlogprob, logprobf); /* log P(O(L) |intial model) */
+		}
+
+		/* compute difference between log probability of two iterations */
+        if (isnan(prodlogprob)) {
+            printf("prev: %lf\n", logprobprev);
+            printf("curr: %lf\n", prodlogprob);
+        }
+		delta = eexp(prodlogprob) - eexp(logprobprev);
+		logprobprev = prodlogprob;
+
+		printf("iteration %i: delta: %lf (%lf)\n", iter, fabs(delta), DELTA);
+	} while ((fabs(delta) > DELTA) && (iter < 100000)); /* if log probability does not change much, exit */
 
 	/* Cleanup */
 	free_dmatrix(numeratorA, 1, hmm->N, 1, hmm->N);
@@ -1894,15 +2304,15 @@ void chmm_init(CHMM *hmm, int N, char *nN, int D, char *nD, int seed)
 
 	hmm->A = (double **) dmatrix(1, hmm->N, 1, hmm->N);
 	for (i = 1; i <= hmm->N; i++) {
-		sum = 0.0;
+		sum = NAN;
 
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] = hmm_rand();
-			sum += hmm->A[i][j];
+			hmm->A[i][j] = eln(hmm_rand());
+			sum = elnsum(sum, hmm->A[i][j]);
 		}
 
 		for (j = 1; j <= hmm->N; j++) {
-			hmm->A[i][j] /= sum;
+			hmm->A[i][j] = elnproduct(hmm->A[i][j], -sum);
 		}
 	}
 
@@ -1926,6 +2336,7 @@ void chmm_init(CHMM *hmm, int N, char *nN, int D, char *nD, int seed)
 
 	for (i = 1; i <= hmm->N; i++) {
 		hmm->pi[i] /= sum;
+		hmm->pi[i] = eln(hmm->pi[i]);
 	}
 }
 
@@ -2146,10 +2557,10 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 	double **cov = hmm->B.cov; // covariance
 	double **cov_inv = hmm->B.cov_inv;
 
-	// logP(x)=−d/2 ln(2π) − 1/2 * ln(σi2) − 1/2 (xi −μi)/σi2
+	// logP(x)=−d/2 ln(2π)− lnσi − 1/2 (xi −μi)/σi2
 
-	double prob1 = - 0.5 * D * eln(2.0 * M_PI); // -d/2 ln(2π)
-	double *prob2 = (double*) dvector(1, N);  // − 1/2 * ln(σi2)
+	double prob1 = - 0.5 * D * eln(2.0 * M_PI); // -−2ln(2π)
+	double *prob2 = (double*) dvector(1, N);  // − 0.5 ln(σi2)
 	for (i = 1; i <= N; i++) {
 		double tmp = 0.0;
 		for (j = 1; j <= D; j++) {
@@ -2165,10 +2576,10 @@ void chmm_outprob(CHMM *hmm, double **sample, int T, double **outprob)
 			tmp = 0.0;
 			for (j = 1; j <= D; j++) {
 				x = feature_tmp[j - 1] - miu[i][j];
-				// (xi −μi) / σi2
+				// (xi −μi)/σi2
 				tmp += x * x * cov_inv[i][j];
 			}
-			// logP(x)=−d/2 ln(2π) − 1/2 * ln(σi2) − 1/2 (xi −μi)/σi2
+			// logP(x)=−2ln(2π)− lnσi − 1/2 (xi −μi)/σi2
 			outprob[i][f + 1] = prob1 + prob2[i] - 0.5 * tmp;
 		}
 	}
@@ -2244,16 +2655,23 @@ void chmm_viterbi(CHMM *hmm, int T, double **outprob, double **delta, int **psi,
 	int i, j; /* state indices */
 	int t;    /* time index */
 
-	int maxvalind;
-	double maxval, val;
+	int maxvalind = 1;
+	double maxval = -DBL_MAX, val = 0;
 
 	/* Initialization  */
+#ifdef USE_OPENMP
+	#pragma omp parallel for
+#endif
 	for (i = 1; i <= hmm->N; i++) {
 		delta[1][i] = elnproduct(hmm->pi[i], outprob[i][1]);
 		psi[1][i] = 0;
 	}
 
 	/* Recursion */
+#ifdef USE_OPENMP	
+	#pragma omp parallel shared (delta, psi, outprob) private (t, j, i, val, maxval, maxvalind)
+	#pragma omp parallel for
+#endif	
 	for (t = 2; t <= T; t++) {
 		for (j = 1; j <= hmm->N; j++) {
 			maxval = -DBL_MAX;
@@ -2480,6 +2898,8 @@ void chmm_baumwelch(CHMM *hmm, struct samples *p_samples, int *piter, double *pl
 
 	*piter = 0;
 
+	char filename[128];
+
 	while (*piter < maxiter) {
 		*piter = *piter + 1;
 		/* compute difference between log probability of
@@ -2491,7 +2911,107 @@ void chmm_baumwelch(CHMM *hmm, struct samples *p_samples, int *piter, double *pl
 		
 		printf("iter %d, delta is : %.20f\n", *piter, delta);
 
-		chmm_save("temp.hmm", hmm);
+		sprintf(filename, "model__%i_%i_%i_%lf.hmm", hmm->N, hmm->D, *piter, logprob);
+
+		chmm_save(filename, hmm);
+
+		if (fabs(delta) < DELTA) {
+			break;
+		}
+	}
+	//while (delta > DELTA);
+
+	*plogprobfinal = logprob; /* log P(O|estimated model) */
+
+	free_dmatrix(cs.alpha, 1, max_t, 1, N);
+	free_dmatrix(cs.beta, 1, max_t, 1, N);
+	free_dmatrix(cs.outprob, 1, hmm->N, 1, max_t);
+	free_dmatrix(as.numeratorA, 1, N, 1, N);
+	free_dmatrix(as.denominatorA, 1, N, 1, N);
+	free_dmatrix(as.numeratorMiu, 1, N, 1, D);
+	free_dmatrix(as.numeratorCov, 1, N, 1, D);
+	free_dvector(as.denominatorM, 1, N);
+}
+
+void chmm_baumwelch_noise(CHMM *hmm, struct samples *p_samples, int *piter, double *plogprobinit, double *plogprobfinal, int maxiter)
+{
+	int D = hmm->D;
+	int N = hmm->N;
+	int max_t = p_samples->feature_count_max;
+
+	struct local_store_c cs;
+	struct local_store_a as;
+
+	double delta, logprob, logprobprev;
+
+	cs.alpha = dmatrix(1, max_t, 1, N);
+	cs.beta = dmatrix(1, max_t, 1, N);
+	cs.outprob = dmatrix(1, hmm->N, 1, max_t);
+
+	as.numeratorA = dmatrix(1, N, 1, N);
+	as.denominatorA = dmatrix(1, N, 1, N);
+	as.numeratorMiu = dmatrix(1, N, 1, D);
+	as.numeratorCov = dmatrix(1, N, 1, D);
+	as.denominatorM = dvector(1, N);
+
+	logprobprev = -1000;
+
+	*piter = 0;
+
+	double noise;
+	double total;
+	if (seed == 0) {
+		/* Generate a random seed */
+		seed = hmm_seed();
+		/* Seed the random number generator */
+		hmm_srand(seed);
+	}
+	double amplitude = 1.0;
+
+	printf("Seed used: %llu\n", seed);
+	
+	int i, j, k;
+
+	char filename[128];
+
+	while (*piter < maxiter) {
+		*piter = *piter + 1;
+		/* compute difference between log probability of
+			  two iterations */
+		f(hmm, p_samples, &cs, &as, &logprob);
+
+		delta = logprob - logprobprev;
+		logprobprev = logprob;
+		
+		printf("iter %d, delta is : %.20f\n", *piter, delta);
+
+		/* Add noise and renormalize afterwards */
+		for (i = 1; i <= hmm->N; i++) {
+			total = NAN;
+			/* Add noise to transition probabilities */
+			for (j = 1; j <= hmm->N; j++) {
+				noise = eln(amplitude * pow(0.8, *piter) * eexp(hmm->A[i][j]) * hmm_rand());
+				hmm->A[i][j] = elnsum(hmm->A[i][j], noise);
+				total = elnsum(total, hmm->A[i][j]);
+			}
+			/* Renormalize the transition probabilities */
+			for (j = 1; j <= hmm->N; j++) {
+				hmm->A[i][j] = elnproduct(hmm->A[i][j], -total);
+			}
+
+			/* Add noise to emission probabilities */
+			for (k = 1; k <= hmm->D; k++) {
+				noise = amplitude * pow(0.8, *piter) * hmm->B.miu[i][k] * hmm_rand();
+				hmm->B.miu[i][k] += noise;
+				noise = amplitude * pow(0.8, *piter) * hmm->B.cov[i][k] * hmm_rand();
+				hmm->B.cov[i][k] += noise;
+				hmm->B.cov_inv[i][k] = 1.0 / hmm->B.cov[i][k];
+			}
+		}
+
+		sprintf(filename, "model_noise__%i_%i_%i_%lf.hmm", hmm->N, hmm->D, *piter, logprob);
+
+		chmm_save(filename, hmm);
 
 		if (fabs(delta) < DELTA) {
 			break;
