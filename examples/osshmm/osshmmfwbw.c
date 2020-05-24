@@ -5,6 +5,8 @@
 
 #define HMMTK_DEFINE
 #include "../../hmmtk.h"
+
+#define SEQIO_DEFINE
 #include "../../seqio.h"
 
 int lookup(char c, char *alphabet)
