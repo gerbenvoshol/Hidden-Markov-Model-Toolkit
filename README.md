@@ -33,3 +33,8 @@ Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
  
  Voshol, G.P. (2020). HMMTK: A simple HMM Toolkit (Version 1.2) [Software]. 
  Available from https://github.com/gerbenvoshol/Hidden-Markov-Model-Toolkit
+
+NOTE
+
+When using the continuous Hidden Markov Model please do not forget to set the DIM variable in hmmtk.h
+#define DIM 4
