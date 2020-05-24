@@ -31,8 +31,11 @@ int main (int argc, char **argv)
 	char *sequence;
 	char *description;
 	sqfp = seqfopen(argv[2], "r", NULL);
-	while ((sequence = seqfgetseq(sqfp, NULL, 1)) != NULL) {
+	while ((sequence = seqfgetrawseq(sqfp, NULL, 1)) != NULL) {
 		description = seqfdescription(sqfp, 0);
+
+		/* Truncate sequence */
+		//sequence[70] = '\0';
 
 		dhmm_cstr2seq(&hmm, sequence, &T, &O);
 
@@ -48,7 +51,7 @@ int main (int argc, char **argv)
 		fprintf(stdout, " (Viterbi MLE log prob = %E)\n", logproba);
 		printf("%s\n", sequence);
 		for (int i = 1; i <= T; i++) {
-			printf("%c ", hmm.nN[q[i]]);
+			printf("%c", hmm.nN[q[i]]);
 		}
 		printf("\n");
 
@@ -58,8 +61,6 @@ int main (int argc, char **argv)
 		free_dmatrix(delta, 1, T, 1, hmm.N);
 	}
 	
-	seqfclose(sqfp);
-
 	dhmm_free(&hmm);
 }
 
