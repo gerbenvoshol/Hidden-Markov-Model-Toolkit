@@ -19,9 +19,11 @@ Simple discrete (DHMM) and continuous Hidden Markov Model (CHMM) library
 
  Version History
   		1.2   Added labelled/constrained Baum-Welch training
+		
  		1.1   Fixed memory leak, fixed the chmm_outprob() function (= P(x|mu, var)), all 
  		      values of A, B and pi are now stored as ln() internally instead of converting 
  		      them in the HMM functions
+		      
 		1.0   Initial release containing basic discrete and continuous hmm functions
 
  CITATION
